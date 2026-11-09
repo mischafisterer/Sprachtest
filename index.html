@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sprachtest">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Sprachtest</title>
+<style>
+:root{--bg:#f5f5f0;--fg:#1c1c1e;--card:#fff;--ac:#0a6cff;--line:#d8d8d0;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root{--bg:#101012;--fg:#f2f2f7;--card:#1c1c1f;--ac:#5aa9ff;--line:#34343a}}
+*{box-sizing:inherit}
+body{margin:0;padding:max(12px,env(safe-area-inset-top)) 14px max(20px,env(safe-area-inset-bottom));background:var(--bg);color:var(--fg);font:16px/1.4 -apple-system,system-ui,sans-serif}
+h1{font-size:22px;margin:6px 0 2px}h2{font-size:17px;margin:0 0 6px}
+p{margin:4px 0 8px;color:inherit;opacity:.8;font-size:14px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0}
+button,select{font:inherit;padding:10px 14px;margin:3px 4px 3px 0;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button{background:var(--ac);color:#fff;border:0;font-weight:600}
+button.s{background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:8px 0}
+#lvl{height:100%;width:0;background:var(--ac)}
+#log{white-space:pre-wrap;word-break:break-word;font:12px/1.35 ui-monospace,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;height:260px;overflow:auto}
+</style></head><body>
+<h1>Sprachtest</h1>
+<p>Testet, was dein iPhone für die Lern-App leisten kann. Alles unten wird protokolliert.</p>
+
+<section><h2>0. Umgebung</h2>
+<button onclick="info()">Umgebung prüfen</button></section>
+
+<section><h2>1. Sprachausgabe</h2>
+<p>Du solltest je einen Satz hören.</p>
+<button onclick="speak('en')">Englisch</button><button onclick="speak('fr')">Französisch</button>
+<button onclick="speak('it')">Italienisch</button><button onclick="speak('es')">Spanisch</button></section>
+
+<section><h2>2. Mikrofon und Pausenerkennung</h2>
+<p>Starten, sprechen, kurz pausieren. Für den Dauertest 20 Minuten laufen lassen (Bildschirm an, Display-Wachhalten aktivieren).</p>
+<button onclick="startMic()">Mikrofon starten</button><button class="s" onclick="stopMic()">Stoppen</button>
+<button class="s" onclick="wake()">Display wach halten</button>
+<div class="bar"><div id="lvl"></div></div><span id="el">0 s</span></section>
+
+<section><h2>3. Spracherkennung im Browser</h2>
+<p>Bitte ohne laufendes Mikrofon aus Test 2 testen.</p>
+<select id="srlang"><option>en-GB</option><option>fr-FR</option><option>it-IT</option><option>es-ES</option></select>
+<button onclick="sr()">Zuhören</button></section>
+
+<section><h2>4. Speicher und Offline</h2>
+<p>Zähler erhöhen, dann App schließen und neu öffnen: Der Zähler muss weiterzählen. Offline: Flugmodus an und App neu öffnen.</p>
+<button onclick="idb()">Zähler erhöhen</button></section>
+
+<section><h2>Protokoll</h2>
+<div id="log"></div>
+<button onclick="copyLog()">Protokoll kopieren</button><button class="s" onclick="L.length=0;out()">Leeren</button></section>
+
+<script>
+const $=id=>document.getElementById(id);
+const L=[];
+function out(){$('log').textContent=L.join('\n');$('log').scrollTop=1e9}
+function log(m){L.push(new Date().toLocaleTimeString('de-DE')+' '+m);out()}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+
+function info(){
+  const app=navigator.standalone||matchMedia('(display-mode: standalone)').matches;
+  log('Modus: '+(app?'Home-Bildschirm-App':'Safari-Tab'));
+  log('HTTPS: '+isSecureContext+' | getUserMedia: '+!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia));
+  log('SpeechRecognition: '+!!SR+' | speechSynthesis: '+!!window.speechSynthesis);
+  log('WakeLock: '+('wakeLock' in navigator)+' | IndexedDB: '+!!window.indexedDB+' | ServiceWorker: '+('serviceWorker' in navigator));
+  const v=speechSynthesis.getVoices();
+  ['en','fr','it','es'].forEach(k=>log('Stimmen '+k+': '+v.filter(x=>x.lang.toLowerCase().startsWith(k)).map(x=>x.name).join(', ')));
+  log('UA: '+navigator.userAgent);
+}
+
+const T={en:['en-GB','Hello! How are you today?'],fr:['fr-FR','Bonjour ! Comment allez-vous aujourd’hui ?'],it:['it-IT','Ciao! Come stai oggi?'],es:['es-ES','¡Hola! ¿Cómo estás hoy?']};
+function speak(k){
+  const [l,t]=T[k];
+  const v=speechSynthesis.getVoices().filter(x=>x.lang.replace('_','-').toLowerCase().startsWith(k));
+  const u=new SpeechSynthesisUtterance(t);u.lang=l;
+  const m=v.find(x=>x.lang.replace('_','-')===l)||v[0];if(m)u.voice=m;
+  u.onstart=()=>log('TTS '+l+' Start, Stimme: '+(m?m.name:'Standard')+' ('+v.length+' verfügbar)');
+  u.onerror=e=>log('TTS Fehler: '+e.error);u.onend=()=>log('TTS '+l+' Ende');
+  speechSynthesis.cancel();speechSynthesis.speak(u);
+}
+
+let stream,ctx,an,timer,beat,speaking=false,lastLoud=0,t0=0,wl;
+async function startMic(){
+  if(stream)return log('Mikrofon läuft schon');
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+    const tr=stream.getAudioTracks()[0];
+    tr.onended=()=>log('!! Mikrofon-Spur beendet (iOS hat den Zugriff gestoppt)');
+    tr.onmute=()=>log('!! Mikrofon stumm geschaltet (Unterbrechung)');
+    tr.onunmute=()=>log('Mikrofon wieder aktiv');
+    ctx=new(window.AudioContext||window.webkitAudioContext)();
+    ctx.onstatechange=()=>log('AudioContext: '+ctx.state);
+    an=ctx.createAnalyser();an.fftSize=1024;ctx.createMediaStreamSource(stream).connect(an);
+    t0=Date.now();speaking=false;
+    log('Mikrofon läuft: '+tr.label);
+    timer=setInterval(tick,100);
+    beat=setInterval(()=>log('Herzschlag: Spur '+tr.readyState+', AudioContext '+ctx.state+', '+Math.round((Date.now()-t0)/60000)+' min'),60000);
+  }catch(e){log('Mikrofon Fehler: '+e.name+' – '+e.message)}
+}
+function tick(){
+  const d=new Float32Array(an.fftSize);an.getFloatTimeDomainData(d);
+  let s=0;for(const x of d)s+=x*x;const r=Math.sqrt(s/d.length),now=Date.now();
+  $('lvl').style.width=Math.min(100,r*600)+'%';
+  if(r>0.03){lastLoud=now;if(!speaking){speaking=true;log('Sprechbeginn')}}
+  else if(speaking&&now-lastLoud>1200){speaking=false;log('Sprechende erkannt (1,2 s Pause)')}
+  $('el').textContent=Math.floor((now-t0)/1000)+' s';
+}
+function stopMic(){
+  clearInterval(timer);clearInterval(beat);
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  if(ctx)ctx.close();stream=ctx=null;$('lvl').style.width='0';log('Mikrofon gestoppt');
+}
+async function wake(){
+  try{wl=await navigator.wakeLock.request('screen');log('Display-Wachhalten aktiv');wl.onrelease=()=>log('Display-Wachhalten freigegeben')}
+  catch(e){log('WakeLock Fehler: '+e.name+' – '+e.message)}
+}
+
+function sr(){
+  if(!SR)return log('SpeechRecognition nicht vorhanden');
+  const r=new SR();r.lang=$('srlang').value;r.interimResults=true;r.continuous=false;
+  r.onstart=()=>log('SR gestartet ('+r.lang+')');
+  r.onresult=e=>{const x=e.results[e.results.length-1];log('SR '+(x.isFinal?'FINAL':'Zwischenstand')+': '+x[0].transcript+' (Sicherheit '+(x[0].confidence||0).toFixed(2)+')')};
+  r.onerror=e=>log('SR Fehler: '+e.error);r.onend=()=>log('SR Ende');
+  try{r.start()}catch(e){log('SR Startfehler: '+e.message)}
+}
+
+function openDb(){return new Promise((ok,no)=>{const q=indexedDB.open('sprachtest',1);q.onupgradeneeded=()=>q.result.createObjectStore('k');q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error)})}
+async function idb(){
+  try{
+    const d=await openDb(),tx=d.transaction('k','readwrite'),s=tx.objectStore('k'),g=s.get('n');
+    g.onsuccess=()=>{const n=(g.result||0)+1;s.put(n,'n');tx.oncomplete=()=>log('IndexedDB: Zähler = '+n)};
+    tx.onerror=()=>log('IndexedDB Fehler: '+tx.error);
+    if(navigator.storage&&navigator.storage.persist)log('Dauerhafte Speicherung (persist): '+await navigator.storage.persist());
+  }catch(e){log('IndexedDB Fehler: '+e.message)}
+}
+
+async function copyLog(){
+  try{await navigator.clipboard.writeText(L.join('\n'));log('Protokoll kopiert')}
+  catch(e){const r=document.createRange();r.selectNodeContents($('log'));getSelection().removeAllRanges();getSelection().addRange(r);log('Kopieren nicht möglich: Text ist markiert, bitte manuell kopieren')}
+}
+
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').then(()=>log('Service Worker registriert'),e=>log('Service Worker Fehler: '+e.message));
+speechSynthesis.onvoiceschanged=()=>{};
+log('Seite geladen. Tippe auf "Umgebung prüfen".');
+</script></body></html>
